@@ -6,54 +6,6 @@ contract GameLogic {
 
     /*** DATA TYPES ***/
 
-    /// @dev This contains all information about game session.
-    /// All rewards in each level.
-    /// All moves made by user in each round.
-    /// All doors that contains wins and loses.
-    struct GameState {
-        
-        mapping(uint256 => Level) levels;
-
-    }
-
-    /// @dev This represents the level the player is in
-    struct Level {
-
-        // The number of the level played.
-        uint256 level; 
-
-        // The player reward if win.
-        uint256 reward;
-
-        // The number of rounds of this level
-        mapping(uint256 => Round) rounds;
-
-    }
-
-    /// @dev This represents a round in each level
-    struct Round {
-
-        // The number of the round in the level x.
-        uint8 roundNumber;
-
-        // The move player made in this round.
-        uint8 move;
-
-        mapping(uint256 => Door) doors;
-    }
-
-    /// @dev This represents a door that the player needs to choose.
-    struct Door {
-        
-        // The number of the door to be choosen by player
-        uint8 doorNumber;
-
-        // True and player wins.
-        // False and player loses this sessions.
-        bool willWin;
-
-    }
-
     /// @dev This represents the game session the player is playing
     struct GameSession {
 
@@ -62,10 +14,10 @@ contract GameLogic {
         uint256 id;
 
         // The current level the user is playing in this session.
-        uint120 currentLevel;
+        uint256 currentLevel;
 
         // The current round the user is playing in this session.
-        uint120 currentRound;
+        uint256 currentRound;
 
         // Player won this session.
         // TODO Review this later. This can be subtitute by checking in game state the last door.willWin
@@ -76,9 +28,6 @@ contract GameLogic {
 
         // The block date containing this new session.
         uint createDate;
-
-        // All the state of this session including rewards and all doors that will lose the game.
-        GameState state;
     }
 
     /// @dev This has metadata for a player
@@ -125,7 +74,19 @@ contract GameLogic {
     /// @dev Game session by game session id
     mapping(uint256 => GameSession) private gameSessions;
 
+    /// @dev This mapper holds all rewards by session and level;
+    /// The key is a string composed by enconding session id and level
+    /// The value is the id of the nft reward.
+    mapping(string => uint256) private rewardsBySessionAndLevel;
 
+    /// @dev this mapper holds all results (fail or win) of doors by session, level and round
+    /// The key is a string composed by enconding the session id, level and the round.
+    /// The value is true if the door is safe or false if the door is an obstacle.
+    mapping(string => bool) private doorResultBySessionLevelAndRound;
+
+    /// @dev this mapper holds all moves made by players.
+    /// The key is a string composed by 
+    mapping(string => uint256) private playerMovesBySessionsLevelAndRound;
 
     /*** FUNCTIONS ***/
 
@@ -166,7 +127,7 @@ contract GameLogic {
         require(msg.value >= feeInWei, "Need fee to play the game");
 
         // A session can only be started when a player does not has an active session
-        require(isPlayerPlaying(msg.sender), "Active session already exists.");
+        require(!isPlayerPlaying(msg.sender), "Active session already exists.");
         
         // Increments the number of gameSessions and this is used as the session identifier
         gameSessionCount++;
@@ -184,13 +145,62 @@ contract GameLogic {
 
     }
 
+    function leaveSession() external {
+        require(!isPlayerPlaying(msg.sender), "Cannot leave empty session.");
+
+        gameSessions[metadataByPlayer[msg.sender].gameSessionId].leftSession = true;
+
+        metadataByPlayer[msg.sender].gameSessionId = 0;
+        metadataByPlayer[msg.sender].cancelations++;
+    }
+
     function randomizeState() internal {
         metadataByPlayer[msg.sender].gameSessionId = gameSessionCount;
 
         GameSession storage session = gameSessions[gameSessionCount];
+        uint256 gameSessionId = gameSessionCount;
 
-        session.createDate = block.timestamp;
+        // Creating sessiong
+        session.id = gameSessionId;
         session.currentLevel = 1;
         session.currentRound = 1;
+
+        // Keys
+        string memory rewardKey = getRewardsKey(gameSessionId, 1);
+        string memory doorResultKey = getDoorResultKey(gameSessionId, 1, 1);
+        string memory door2ResultKey = getDoorResultKey(gameSessionId, 1, 2);
+
+        rewardsBySessionAndLevel[rewardKey] = 23;
+        
+        doorResultBySessionLevelAndRound[doorResultKey] = true;
+        doorResultBySessionLevelAndRound[door2ResultKey] = false;
+
+    }
+
+    function getRewardsKey(
+        uint256 session, 
+        uint256 level
+        ) internal pure returns (string memory) {
+                
+        return string(abi.encodePacked(session, level));
+    }
+
+    function getDoorResultKey(
+        uint256 session, 
+        uint256 level,
+        uint256 round
+        ) internal pure returns (string memory) {
+                
+        return string(abi.encodePacked(session, level, round));
+    }
+    
+    function getPlayerMovesKey(
+        address player,
+        uint256 session, 
+        uint256 level,
+        uint256 round
+        ) internal pure returns (string memory) {
+                
+        return string(abi.encodePacked(player, session, level, round));
     }
 }
