@@ -16,7 +16,6 @@ contract GameLogic {
         uint256 currentRound;
 
         // Player won this session.
-        // TODO Review this later. This can be subtitute by checking in game state the last door.willWin
         bool won;
 
         // The player has left the session and claim all rewards with him
@@ -116,10 +115,9 @@ contract GameLogic {
         return metadataByPlayer[_player].cancelations;
     }
 
-    /// @dev This function will start a new game sessions.
+    /// @dev This function will start a new game session.
     /// For this to happen the user needs to pay a fee.
     /// For this to happen a player cannot has an active session.
-    /// All of the random rewards and winning doors are calculated in this function through an oracle.
     function startGameSession() external payable returns(uint256) {
         // A fee is needed to play the game
         require(msg.value >= feeInWei, "Need fee to play the game");
@@ -130,8 +128,10 @@ contract GameLogic {
         // Increments the number of playerSessions and this is used as the session identifier
         playerSessionCount++;
 
+        metadataByPlayer[msg.sender].playerSessionId = playerSessionCount;
+
         // Invokes oracle to produce random game session
-        randomizeState(msg.sender);
+        randomizeState();
 
         return playerSessionCount;   
     }
@@ -147,19 +147,19 @@ contract GameLogic {
         PlayerMeta storage playerMetadata = metadataByPlayer[player];
         GameSession storage playerSession = playerSessions[playerMetadata.playerSessionId];
 
-        string memory movesKey = getPlayerMovesKey(
-            player,
-            playerMetadata.playerSessionId,
-            playerSession.currentLevel,
-            playerSession.currentRound
-        );
-
         // The final level will always have two doors to choose.
         // This means that the number of doors is (maxLevel - currLevel) + 2
         // The door choosen by the player must be between the door number on and the 
         // result of the formula above.
         uint256 lastDoorNumber = getNumberOfDoorByLevel(playerSession.currentLevel);
         require(_choosedDoor > 0 && _choosedDoor <= lastDoorNumber, "You choosed non-existing door.");
+
+        string memory movesKey = getPlayerMovesKey(
+            player,
+            playerMetadata.playerSessionId,
+            playerSession.currentLevel,
+            playerSession.currentRound
+        );
 
         // Only for protection.
         // The way the logic is handled when we loose or cancel a game session we
@@ -169,8 +169,6 @@ contract GameLogic {
 
         playerMovesBySessionsLevelAndRound[movesKey] = _choosedDoor;
 
-        // Checks if the user loose the game or not.
-        // If so the session is marked as finished.
         string memory doorResultKey = getDoorResultKey(
             playerMetadata.playerSessionId,
             playerSession.currentLevel,
@@ -178,23 +176,21 @@ contract GameLogic {
             _choosedDoor
         );
 
-        // If player wins this specific round.
         bool won = doorResultBySessionLevelRoundAndDoor[doorResultKey];
 
         if(won) {
-            // Player won the level.
+            // Player won the round.
             if (playerSession.currentRound == roundsNumberPerLevel) {
-                // Resets the round counter to 1 to prepare for the next level
-                playerSession.currentRound = 1;
-
                 // The player won this session
-                if(playerSession.currentLevel == finalLevel){
+                if(playerSession.currentLevel == finalLevel) {
                     playerSession.won = true;   
+                    //TODO COLLECT REWARDS.
                 }
-            }
-            //  Player won the round.
-            else {
-                playerSession.currentRound++;
+                // The player won this level. Reset rounds and increment level.
+                else {
+                    playerSession.currentRound = 1;
+                    playerSession.currentLevel++;
+                }
             }
         }
         // Player lost the game.
@@ -225,10 +221,8 @@ contract GameLogic {
 
     /// @dev TESTES FUNCITON
     /// TODO TO BE REMOVED
-    function randomizeState(address _player) internal {
+    function randomizeState() internal {
         uint256 playerSessionId = playerSessionCount;
-
-        metadataByPlayer[_player].playerSessionId = playerSessionId;
 
         GameSession storage session = playerSessions[playerSessionId];
 
