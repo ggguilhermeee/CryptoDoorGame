@@ -2,6 +2,8 @@
 
 pragma solidity ^0.8.0;
 
+import "hardhat/console.sol";
+
 contract GameLogic {
 
     /*** DATA TYPES ***/
@@ -120,8 +122,8 @@ contract GameLogic {
     /// For this to happen a player cannot has an active session.
     function startGameSession() external payable returns(uint256) {
         // A fee is needed to play the game
-        require(msg.value >= feeInWei, "Need fee to play the game");
-
+        require(msg.value == feeInWei, "Need to pay the right fee.");
+        
         // A session can only be started when a player does not has an active session
         require(!isPlayerPlaying(msg.sender), "Active session already exists.");
         
@@ -129,7 +131,7 @@ contract GameLogic {
         playerSessionCount++;
 
         metadataByPlayer[msg.sender].playerSessionId = playerSessionCount;
-
+        
         // Invokes oracle to produce random game session
         randomizeState();
 
