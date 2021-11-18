@@ -2,97 +2,167 @@ import { BigNumberish } from "@ethersproject/bignumber";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
 import { expect } from "chai";
 import { ethers } from "hardhat";
-import { GameLogic, GameLogic__factory } from "../typechain";
+import { GameApi__factory, GameApi } from "../typechain";
 
-describe("GameLogic", function () {
+const revertMessages = {
 
-  let GameLogic:GameLogic__factory; 
-  let gameLogic:GameLogic;
+  wrongFeeToOpenSession: "Need to pay the right fee.",
+
+  openDoubleSession: "Active session already exists.",
+
+  leaveNonExistingSession: "Cannot leave empty session.",
+  
+  notEnoughLinkForChainLink: "Not enough LINK - fill contract with faucet",
+
+};
+
+describe("Game Contract", async function () {
+
+  let GameApi:GameApi__factory; 
+  let gameApi:GameApi;
+
+  // Mocks
   
   let owner:SignerWithAddress;
   let addr1:SignerWithAddress;
   let addr2:SignerWithAddress;
   let addrs:SignerWithAddress[];
 
-  const startSessionFee: BigNumberish = 7;
-
-  before(async function () {
-    GameLogic = await ethers.getContractFactory("GameLogic");
-
-    [owner, addr1, addr2, ...addrs] = await ethers.getSigners();
-
-    gameLogic = await GameLogic.deploy(startSessionFee);
-
-  });
+  const openSessionFee: BigNumberish = 7;
 
   this.beforeEach(async function () {
-    try{
-      await gameLogic.leaveSession();
-      await gameLogic.connect(addr1).leaveSession();
-    }catch{}
+    
+    GameApi = await ethers.getContractFactory("GameApi");
+
+    let LinkToken = await ethers.getContractFactory("Link");
+    
+    [owner, addr1, addr2, ...addrs] = await ethers.getSigners();
+    
+    gameApi = await GameApi.deploy(openSessionFee);
+
   });
 
-  describe("Getter Mechanics Logic", function () {
+  describe("Testing opening and close sessions", function () {
+
+    it("Function openSession should pass when the right fee is paid.", async function () {
     
-    it("Function startGameSession should fail when fee is not paid.", async function () {
-
-      await expect(gameLogic.startGameSession()).to.be.revertedWith("Need to pay the right fee.");
-
-    });
-
-    it("Function startGameSession should fail when payed fee is lower than the fee in storage.", async function () {
-
-      await expect(gameLogic.startGameSession({value: startSessionFee - 1})).to.be.revertedWith("Need to pay the right fee.");
-
-    });
-
-    it("Function startGameSession should fail when payed fee is bigger than the fee in storage.", async function () {
+      await gameApi.openSession({value: openSessionFee});
       
-      await expect(gameLogic.startGameSession({value: startSessionFee + 1})).to.be.revertedWith("Need to pay the right fee.");
-    
+      expect(await gameApi.getCreatedSessionsCounter()).to.equal(1);
+  
     });
-    
-    it("Function startGameSession should pass when the right fee is paid.", async function () {
-      console.log(await gameLogic.isPlayerPlaying(owner.address));
+
+    it("When opening a session the session's counter should increment.", async function () {
       
-      const response = await gameLogic.startGameSession({value: startSessionFee});
+      await gameApi.openSession({value: openSessionFee});
 
-      expect(response.v).greaterThan(0);
+      expect(await gameApi.getCreatedSessionsCounter()).to.eq(1);
+      
+      await gameApi.connect(addr1).openSession({value: openSessionFee});
 
-    });
-
-    it("Function startGameSession should fail when user is already has active session.", async function () {
-
-      gameLogic.connect(addr2).startGameSession({value: startSessionFee});
-
-      await expect(gameLogic.connect(addr2).startGameSession({value: startSessionFee}))
-        .to.be.revertedWith("Active session already exists.");
+      expect(await gameApi.getCreatedSessionsCounter()).to.eq(2);
 
     });
 
-    it("Function isPlayerPlaying should return false when user is not in a session.", async function () {
-    
-      const isPlayerPlaying: boolean = await gameLogic.isPlayerPlaying(owner.address)
+    it("Player can't open a session when the fee is not provided.", async function () {
+
+      await expect(gameApi.openSession())
+        .to.be.revertedWith(revertMessages.wrongFeeToOpenSession);
+  
+    });
+  
+    it("Player can't open a session when fee is lower than expected.", async function () {
+  
+      await expect(gameApi.openSession({value: openSessionFee - 1}))
+        .to.be.revertedWith(revertMessages.wrongFeeToOpenSession);
+  
+    });
+
+    it("Player can't open a session when there is one already active", async function () {
+
+      await gameApi.connect(addr2).openSession({value: openSessionFee});
+  
+      await expect(gameApi.connect(addr2).openSession({value: openSessionFee}))
+        .to.be.revertedWith(revertMessages.openDoubleSession);
+  
+    });
+  
+    it("Function closeSession fails when the user has no session active", async function () {
+
+      await expect(gameApi.closeSession())
+        .to.be.revertedWith(revertMessages.leaveNonExistingSession);
+  
+    });
+
+    it("When player has no active session isPlayerPlaying should return false", async function () {
+  
+      const isPlayerPlaying: boolean = await gameApi.isPlayerPlaying(owner.address)
   
       expect(isPlayerPlaying).is.false;
-
+  
     });
   
-    it("Fuction isPlayerPlaying should return true when user starts a new session.", async function () {
+    it("When player has active session isPlayerPlaying should return true", async function () {
   
-      await gameLogic.startGameSession({value: startSessionFee});
-
-      const isPlayerPlaying: boolean = await gameLogic.isPlayerPlaying(owner.address)
+      await gameApi.openSession({value: openSessionFee});
+  
+      const isPlayerPlaying: boolean = await gameApi.isPlayerPlaying(owner.address)
   
       expect(isPlayerPlaying).is.true;
-
+  
     });
 
-    //it("Function isPlayerPlaying when succeded increments a counter used as new game session id", async function (){});
+    it("Player when owns an active session he can close it.", async function () {
 
-    // leaves session
-    //it("Function leaveSession fails when the user has no session active", async function (){});
-    //it("Function leaveSession completes when the user has one session active", async function (){});
-  })
+      await gameApi.openSession({value: openSessionFee});
+  
+      const playing = await gameApi.isPlayerPlaying(owner.address);
+  
+      expect(playing).is.true;
+  
+      await gameApi.closeSession();
+  
+      const closed = await gameApi.isPlayerPlaying(owner.address);
+  
+      expect(closed).is.false;
+      
+    });
+
+  });
+
+  describe("Testing emmitted events", function (){
+
+    it("When player opens session event PlayerOpenSession is emitted.", async function () {
+  
+      await expect(gameApi.openSession({value: openSessionFee}))
+        .to.emit(gameApi, "PlayerOpenSession")
+        .withArgs(owner.address, 1);
+  
+    });
+  
+    it("When player closes session event PlayerClosesSession is emitted.", async function () {
+  
+      await gameApi.openSession({value: openSessionFee})
+
+      await expect(gameApi.closeSession())
+        .to.emit(gameApi, "PlayerClosesSession")
+        .withArgs(owner.address, 1);
+  
+    });
+
+
+  });
+
+  describe.only("Testing playing feature", function () {
+    
+    it("Players can't play if the game contract does't has enough link", async function () {
+
+      await gameApi.openSession({value: openSessionFee});
+  
+      await expect(gameApi.play(1)).to.be.revertedWith(revertMessages.notEnoughLinkForChainLink);
+      
+    });
+
+  });
 
 });
