@@ -28,7 +28,6 @@ contract ExposedGameLogic is GameLogic {
         uint256 _session, 
         uint256 _level
         ) external pure returns (string memory) {
-                
         return super._getRewardsKey(_session, _level);
     }
 

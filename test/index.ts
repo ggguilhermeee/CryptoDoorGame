@@ -16,6 +16,10 @@ const revertMessages = {
 
   playWithNoActiveSession: "No session active to play.",
 
+  doublingRequestRandomness: "Already requested a random number.",
+
+  nonExistingDoor: "You choosed non-existing door.",
+
 };
 
 describe("Game Contract", async function () {
@@ -57,11 +61,17 @@ describe("Game Contract", async function () {
     
     VRFCoordinator = await ethers.getContractFactory("VRFCoordinator");
     vrfCoordinator = await VRFCoordinator.deploy(linkToken.address, owner.address)
-    
-    gameApi = await GameApi.deploy(openSessionFee, vrfCoordinator.address, linkToken.address, 1, ethers.utils.formatBytes32String("test"));
+    // ----
 
+    gameApi = await GameApi.deploy(openSessionFee, vrfCoordinator.address, linkToken.address, 1, ethers.utils.formatBytes32String("test"));
     exposedGameLogic = await ExposedGameLogic.deploy(openSessionFee, vrfCoordinator.address, linkToken.address, 1, ethers.utils.formatBytes32String("test"));
+
   });
+
+  async function sendLinkToGameContract(amount:number){
+    const transferLinkTransaction = await linkToken.transfer(gameApi.address, amount);
+    await transferLinkTransaction.wait();
+  }
 
   describe("Testing opening and close sessions", function () {
 
@@ -133,6 +143,14 @@ describe("Game Contract", async function () {
   
     });
 
+    it("When player starts new session the session level and round is set to 1", async function () {
+
+      await gameApi.openSession({value: openSessionFee});
+
+      
+
+    });
+
     it("Player when owns an active session he can close it.", async function () {
 
       await gameApi.openSession({value: openSessionFee});
@@ -174,18 +192,32 @@ describe("Game Contract", async function () {
 
   });
 
-  describe.only("Testing internal functions", function () {
+  describe("Testing internal functions", function () {
 
     it("The number of doors per level is defined by the formula (f - c) + 2", async function () {
 
       const result = (f:number, c:number) => (f-c) + 2;
 
-      const finalLevel = await exposedGameLogic.getFinalLevel();
-      console.log(finalLevel);
-      //expect(await exposedGameLogic.getNumberOfDoorByLevel(1)).to.be.eq(result(finalLevel, 1));
-      //expect(await exposedGameLogic.getNumberOfDoorByLevel(5)).to.be.eq(result(finalLevel, 5));
-      //expect(await exposedGameLogic.getNumberOfDoorByLevel(finalLevel)).to.be.eq(result(finalLevel, finalLevel));
+      const finalLevel = (await exposedGameLogic.getFinalLevel()).toNumber();
 
+      expect(await exposedGameLogic.getNumberOfDoorByLevel(1)).to.be.eq(result(finalLevel, 1));
+      expect(await exposedGameLogic.getNumberOfDoorByLevel(5)).to.be.eq(result(finalLevel, 5));
+      expect(await exposedGameLogic.getNumberOfDoorByLevel(finalLevel)).to.be.eq(result(finalLevel, finalLevel));
+
+    });
+
+    // TODO
+    it("The key for rewards map state is composed by encodePacked(session, level)", async function () {
+
+      const session = 1;
+      const level = 2;
+
+      //const keyLookup = session + level;
+      //const expectedKey = ethers.utils.keccak256(keyLookup);
+    
+
+      console.log(await exposedGameLogic.getRewardsKey(session, level));
+      
     });
 
   });
@@ -200,10 +232,36 @@ describe("Game Contract", async function () {
 
     it("Player can't play with no active session", async function () {
 
-      const transferLinkTransaction = await linkToken.transfer(gameApi.address, 100);
-      await transferLinkTransaction.wait();
+      await sendLinkToGameContract(100);
       
       await expect(gameApi.play(1)).to.be.revertedWith(revertMessages.playWithNoActiveSession);
+
+    });
+
+    it("Player can't play again while the randomness is not fullfilled", async function (){
+
+      await sendLinkToGameContract(100);
+
+      await gameApi.openSession({value: openSessionFee});
+
+      await gameApi.play(1);
+
+      await expect(gameApi.play(1)).to.be.revertedWith(revertMessages.doublingRequestRandomness);
+
+    });
+
+    it("Player can't choose a door number 0 or bigger than the doors per level", async function (){
+
+      await sendLinkToGameContract(100);
+
+      await gameApi.openSession({value: openSessionFee});
+
+      const doorsAmount = (await exposedGameLogic.getNumberOfDoorByLevel(1)).toNumber();
+
+      await expect(gameApi.play(0)).to.be.revertedWith(revertMessages.nonExistingDoor);
+
+      await expect(gameApi.play(doorsAmount + 1)).to.be.revertedWith(revertMessages.nonExistingDoor);
+
     });
 
   });

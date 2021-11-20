@@ -95,7 +95,15 @@ contract GameLogic is GameCore, VRFConsumerBase {
         // Increments the number of playerSessions and this is used as the session identifier
         uint256 newPlayerSessionId = ++playerSessionCount;
 
-        metadataByPlayer[player].playerSessionId = newPlayerSessionId;
+        PlayerMeta storage playerMetadata = metadataByPlayer[player];
+        GameSession storage playerSession = playerSessions[newPlayerSessionId];
+
+        // Store new sessiongId
+        playerMetadata.playerSessionId = newPlayerSessionId;
+
+        // Init player session data
+        playerSession.currentLevel = 1;
+        playerSession.currentRound = 1;
 
         emit PlayerOpenSession(player, newPlayerSessionId);
         
@@ -113,7 +121,7 @@ contract GameLogic is GameCore, VRFConsumerBase {
 
         require(isPlayerPlaying(player), "No session active to play.");
         
-        require(addressToRequestId[player] != 0, "Already requested a random number.");
+        require(addressToRequestId[player] == 0, "Already requested a random number.");
         
         PlayerMeta storage playerMetadata = metadataByPlayer[player];
         GameSession storage playerSession = playerSessions[playerMetadata.playerSessionId];
@@ -123,6 +131,7 @@ contract GameLogic is GameCore, VRFConsumerBase {
         // The door choosen by the player must be between the door number on and the 
         // result of the formula above.
         uint256 doorsAmount = _getNumberOfDoorByLevel(playerSession.currentLevel);
+        
         require(_choosedDoor > 0 && _choosedDoor <= doorsAmount, "You choosed non-existing door.");
 
         string memory movesKey = _getPlayerMovesKey(
@@ -137,7 +146,7 @@ contract GameLogic is GameCore, VRFConsumerBase {
         // The way the logic is handled when we loose or cancel a game session we
         // no longer can modify the state of the last session and the first required
         // for this method will fail.
-        require(playerMovesBySessionsLevelAndRound[movesKey] != 0, "You already made a move.");
+        require(playerMovesBySessionsLevelAndRound[movesKey] == 0, "You already made a move.");
 
         bytes32 requestId = requestRandomness(keyHash, fee);
 
@@ -256,7 +265,6 @@ contract GameLogic is GameCore, VRFConsumerBase {
         uint256 _session, 
         uint256 _level
         ) internal pure returns (string memory) {
-                
         return string(abi.encodePacked(_session, _level));
     }
 
