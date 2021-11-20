@@ -2,7 +2,7 @@ import { BigNumberish } from "@ethersproject/bignumber";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
 import { expect } from "chai";
 import { ethers } from "hardhat";
-import { GameApi__factory, GameApi } from "../typechain";
+import { GameApi__factory, GameApi, LinkToken__factory, LinkToken, VRFConsumerBase__factory, VRFConsumerBase, VRFCoordinatorV2__factory, VRFCoordinatorV2, VRFCoordinator__factory, VRFCoordinator, ExposedGameLogic, ExposedGameLogic__factory } from "../typechain";
 
 const revertMessages = {
 
@@ -14,6 +14,8 @@ const revertMessages = {
   
   notEnoughLinkForChainLink: "Not enough LINK - fill contract with faucet",
 
+  playWithNoActiveSession: "No session active to play.",
+
 };
 
 describe("Game Contract", async function () {
@@ -21,8 +23,19 @@ describe("Game Contract", async function () {
   let GameApi:GameApi__factory; 
   let gameApi:GameApi;
 
+  let ExposedGameLogic:ExposedGameLogic__factory;
+  let exposedGameLogic:ExposedGameLogic;
+
   // Mocks
-  
+
+  let LinkToken:LinkToken__factory;
+  let linkToken:LinkToken;
+
+  let VRFCoordinator:VRFCoordinator__factory;
+  let vrfCoordinator:VRFCoordinator;
+
+  //-----
+
   let owner:SignerWithAddress;
   let addr1:SignerWithAddress;
   let addr2:SignerWithAddress;
@@ -32,14 +45,22 @@ describe("Game Contract", async function () {
 
   this.beforeEach(async function () {
     
-    GameApi = await ethers.getContractFactory("GameApi");
-
-    let LinkToken = await ethers.getContractFactory("Link");
-    
     [owner, addr1, addr2, ...addrs] = await ethers.getSigners();
-    
-    gameApi = await GameApi.deploy(openSessionFee);
 
+    // Game chain of contracts
+    GameApi = await ethers.getContractFactory("GameApi");
+    ExposedGameLogic = await ethers.getContractFactory("ExposedGameLogic");
+
+    // Mocks
+    LinkToken = await ethers.getContractFactory("LinkToken");
+    linkToken = await LinkToken.deploy();
+    
+    VRFCoordinator = await ethers.getContractFactory("VRFCoordinator");
+    vrfCoordinator = await VRFCoordinator.deploy(linkToken.address, owner.address)
+    
+    gameApi = await GameApi.deploy(openSessionFee, vrfCoordinator.address, linkToken.address, 1, ethers.utils.formatBytes32String("test"));
+
+    exposedGameLogic = await ExposedGameLogic.deploy(openSessionFee, vrfCoordinator.address, linkToken.address, 1, ethers.utils.formatBytes32String("test"));
   });
 
   describe("Testing opening and close sessions", function () {
@@ -153,14 +174,36 @@ describe("Game Contract", async function () {
 
   });
 
-  describe.only("Testing playing feature", function () {
+  describe.only("Testing internal functions", function () {
+
+    it("The number of doors per level is defined by the formula (f - c) + 2", async function () {
+
+      const result = (f:number, c:number) => (f-c) + 2;
+
+      const finalLevel = await exposedGameLogic.getFinalLevel();
+      console.log(finalLevel);
+      //expect(await exposedGameLogic.getNumberOfDoorByLevel(1)).to.be.eq(result(finalLevel, 1));
+      //expect(await exposedGameLogic.getNumberOfDoorByLevel(5)).to.be.eq(result(finalLevel, 5));
+      //expect(await exposedGameLogic.getNumberOfDoorByLevel(finalLevel)).to.be.eq(result(finalLevel, finalLevel));
+
+    });
+
+  });
+
+  describe("Testing playing feature", function () {
     
     it("Players can't play if the game contract does't has enough link", async function () {
 
-      await gameApi.openSession({value: openSessionFee});
-  
       await expect(gameApi.play(1)).to.be.revertedWith(revertMessages.notEnoughLinkForChainLink);
       
+    });
+
+    it("Player can't play with no active session", async function () {
+
+      const transferLinkTransaction = await linkToken.transfer(gameApi.address, 100);
+      await transferLinkTransaction.wait();
+      
+      await expect(gameApi.play(1)).to.be.revertedWith(revertMessages.playWithNoActiveSession);
     });
 
   });

@@ -46,7 +46,7 @@ contract GameCore {
     /*** CONSTANTS ***/
 
     /// @dev Fee in wei to start a game session.
-    uint256 internal feeInWei;
+    uint256 internal feeToOpenSession;
 
     /// @dev Number of sessions occured.
     /// This is used as a game session unique identifier.

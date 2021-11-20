@@ -34,16 +34,19 @@ contract GameLogic is GameCore, VRFConsumerBase {
 
     /*** FUNCTIONS ***/
 
-    constructor(uint256 _feeInWei) 
-        VRFConsumerBase(
-            0xf0d54349aDdcf704F77AE15b96510dEA15cb7952, // VRF Coordinator
-            0x514910771AF9Ca656af840dff83E8264EcF986CA  // LINK Token
-        )
+    constructor(
+        uint256 _feeToOpenSession, 
+        address _vrfCoordinator, 
+        address _linkToken, 
+        uint256 _vrfFee, 
+        bytes32 _keyHash) VRFConsumerBase(_vrfCoordinator,_linkToken)
     {
-        keyHash = 0xAA77729D3466CA35AE8D28B3BBAC7CC36A5031EFDC430821C02BC31A238AF445;
-        fee = 0.1 * 10 ** 18; // 0.1 LINK (Varies by network)
+        keyHash = _keyHash;
+        fee = _vrfFee;
 
-        feeInWei = _feeInWei; // Fee to start session
+        feeToOpenSession = _feeToOpenSession; // Fee to start session
+
+        finalLevel = 7; // ChangeToBeParameterLater
     }
 
     /// @dev Called by chainlink to return our random number.
@@ -82,7 +85,7 @@ contract GameLogic is GameCore, VRFConsumerBase {
     function _startGameSession() internal returns(uint256) {
 
         // A fee is needed to play the game
-        require(msg.value == feeInWei, "Need to pay the right fee.");
+        require(msg.value == feeToOpenSession, "Need to pay the right fee.");
 
         address player = msg.sender;
 
@@ -103,13 +106,13 @@ contract GameLogic is GameCore, VRFConsumerBase {
     /// @param _choosedDoor The choosed door by the player.
     /// Returns true if the player choosed the right door false if player choosed the wrong door.
     function _play(uint256 _choosedDoor) internal {
-        console.log("chegou");
+
         require(LINK.balanceOf(address(this)) >= fee, "Not enough LINK - fill contract with faucet");
-        console.log("chegou2");
+        
         address player = msg.sender;
 
         require(isPlayerPlaying(player), "No session active to play.");
-
+        
         require(addressToRequestId[player] != 0, "Already requested a random number.");
         
         PlayerMeta storage playerMetadata = metadataByPlayer[player];
