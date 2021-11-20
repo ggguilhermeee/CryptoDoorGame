@@ -2,7 +2,7 @@ import { BigNumberish } from "@ethersproject/bignumber";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
 import { expect } from "chai";
 import { ethers } from "hardhat";
-import { GameApi__factory, GameApi, LinkToken__factory, LinkToken, VRFConsumerBase__factory, VRFConsumerBase, VRFCoordinatorV2__factory, VRFCoordinatorV2, VRFCoordinator__factory, VRFCoordinator, ExposedGameLogic, ExposedGameLogic__factory } from "../typechain";
+import { GameApi__factory, GameApi, LinkToken__factory, LinkToken, VRFCoordinator__factory, VRFCoordinator, ExposedGameLogic, ExposedGameLogic__factory } from "../typechain";
 
 const revertMessages = {
 
@@ -143,11 +143,14 @@ describe("Game Contract", async function () {
   
     });
 
-    it("When player starts new session the session level and round is set to 1", async function () {
+    it("When player starts new session the session level and round should be set to 1", async function () {
 
       await gameApi.openSession({value: openSessionFee});
 
-      
+      const currentSession = await gameApi.getCurrentSession(owner.address);
+
+      expect(currentSession.currentLevel).to.be.eq(1);
+      expect(currentSession.currentRound).to.be.eq(1);
 
     });
 
@@ -189,6 +192,19 @@ describe("Game Contract", async function () {
   
     });
 
+    it.only("When player makes a move and eveything works as expected a new event RequestRandom is emitted", async function () {
+
+      await sendLinkToGameContract(100);
+
+      await gameApi.openSession({value: openSessionFee});
+
+      //0x10487077d5d27dd25c219249df78f019cec43368924997d1ffb632cc823220c5 
+      // is the result from chainlink contract with the state we have in game contract (keyhash and fee)
+      await expect(gameApi.play(1))
+        .to.emit(gameApi, "RequestRandom")
+        .withArgs(owner.address, "0x10487077d5d27dd25c219249df78f019cec43368924997d1ffb632cc823220c5");
+    });
+
 
   });
 
@@ -207,7 +223,7 @@ describe("Game Contract", async function () {
     });
 
     // TODO
-    it("The key for rewards map state is composed by encodePacked(session, level)", async function () {
+    it.skip("The key for rewards map state is composed by encodePacked(session, level)", async function () {
 
       const session = 1;
       const level = 2;
@@ -216,7 +232,7 @@ describe("Game Contract", async function () {
       //const expectedKey = ethers.utils.keccak256(keyLookup);
     
 
-      console.log(await exposedGameLogic.getRewardsKey(session, level));
+      //console.log(await exposedGameLogic.getRewardsKey(session, level));
       
     });
 
@@ -250,7 +266,7 @@ describe("Game Contract", async function () {
 
     });
 
-    it("Player can't choose a door number 0 or bigger than the doors per level", async function (){
+    it("Player can't choose a door number 0 or bigger than the doors per level", async function () {
 
       await sendLinkToGameContract(100);
 
@@ -262,6 +278,22 @@ describe("Game Contract", async function () {
 
       await expect(gameApi.play(doorsAmount + 1)).to.be.revertedWith(revertMessages.nonExistingDoor);
 
+    });
+
+    it("Player loses the game and loses all it's tokens gain from the session", async function () {
+
+    });
+
+    it("Player wins all rounds and passes to the next level", async function () {
+
+    });
+
+    it("Player wins all levels and all tokens should move to their address", async function () {
+
+    });
+
+    it("Player close the session and collect all of their tokens", async function () {
+      
     });
 
   });

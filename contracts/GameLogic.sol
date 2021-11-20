@@ -49,10 +49,12 @@ contract GameLogic is GameCore, VRFConsumerBase {
         finalLevel = 7; // ChangeToBeParameterLater
     }
 
-    /// @dev Called by chainlink to return our random number.
-    function fulfillRandomness(bytes32 requestId, uint256 randomness) internal override {
-        //addressToRequestId[] = 0
-        //randomResult = randomness;
+    /// @dev Gets the current session of the _player.
+    /// @param _player The current session of the player.
+    function getCurrentSession(address _player) public view returns(GameSession memory) {
+        uint256 sessionId = metadataByPlayer[_player].playerSessionId;
+
+        return playerSessions[sessionId];
     }
 
     /// @dev Checks if the player already has and active session.
@@ -244,6 +246,12 @@ contract GameLogic is GameCore, VRFConsumerBase {
         //TODO COLLECT REWARDS.
 
         emit PlayerClosesSession(msg.sender, cancelledSession);
+    }
+    
+    /// @dev Called by chainlink to return our random number.
+    function fulfillRandomness(bytes32 requestId, uint256 randomness) internal override {
+        //addressToRequestId[] = 0
+        //randomResult = randomness;
     }
 
     /// @dev The last level will have only two doors to choose to be 50% winning the round.
