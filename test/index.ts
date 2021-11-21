@@ -1,8 +1,10 @@
 import { BigNumberish } from "@ethersproject/bignumber";
+import { BytesLike } from "@ethersproject/bytes";
+import { ContractTransaction } from "@ethersproject/contracts";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
 import { expect } from "chai";
 import { ethers } from "hardhat";
-import { GameApi__factory, GameApi, LinkToken__factory, LinkToken, VRFCoordinator__factory, VRFCoordinator, ExposedGameLogic, ExposedGameLogic__factory } from "../typechain";
+import { GameApi__factory, GameApi, LinkToken__factory, LinkToken, ExposedGameLogic, ExposedGameLogic__factory, VRFCoordinatorMock, VRFCoordinatorMock__factory } from "../typechain";
 
 const revertMessages = {
 
@@ -20,6 +22,8 @@ const revertMessages = {
 
   nonExistingDoor: "You choosed non-existing door.",
 
+  onlyVRFChainlinkCanGiveRandom: "Only VRFCoordinator can fulfill",
+
 };
 
 describe("Game Contract", async function () {
@@ -35,8 +39,8 @@ describe("Game Contract", async function () {
   let LinkToken:LinkToken__factory;
   let linkToken:LinkToken;
 
-  let VRFCoordinator:VRFCoordinator__factory;
-  let vrfCoordinator:VRFCoordinator;
+  let VRFCoordinator:VRFCoordinatorMock__factory;
+  let vrfCoordinator:VRFCoordinatorMock;
 
   //-----
 
@@ -59,7 +63,7 @@ describe("Game Contract", async function () {
     LinkToken = await ethers.getContractFactory("LinkToken");
     linkToken = await LinkToken.deploy();
     
-    VRFCoordinator = await ethers.getContractFactory("VRFCoordinator");
+    VRFCoordinator = await ethers.getContractFactory("VRFCoordinatorMock");
     vrfCoordinator = await VRFCoordinator.deploy(linkToken.address, owner.address)
     // ----
 
@@ -71,6 +75,14 @@ describe("Game Contract", async function () {
   async function sendLinkToGameContract(amount:number){
     const transferLinkTransaction = await linkToken.transfer(gameApi.address, amount);
     await transferLinkTransaction.wait();
+  }
+
+  async function getReceiptFromRequestRandomEvent(playTransaction: ContractTransaction): Promise<string>{
+    const playReceipt = await playTransaction.wait(1);
+
+    const emittedEvent = playReceipt.events?.find(e => e.eventSignature == "RequestRandom(address,bytes32)");
+
+    return emittedEvent?.args!["_requestId"]
   }
 
   describe("Testing opening and close sessions", function () {
@@ -192,17 +204,19 @@ describe("Game Contract", async function () {
   
     });
 
-    it.only("When player makes a move and eveything works as expected a new event RequestRandom is emitted", async function () {
+    it("When player makes a move and eveything works as expected a new event RequestRandom is emitted", async function () {
 
       await sendLinkToGameContract(100);
 
       await gameApi.openSession({value: openSessionFee});
 
-      //0x10487077d5d27dd25c219249df78f019cec43368924997d1ffb632cc823220c5 
-      // is the result from chainlink contract with the state we have in game contract (keyhash and fee)
-      await expect(gameApi.play(1))
+      const playTransaction = await gameApi.play(1);
+
+      const requestId = await getReceiptFromRequestRandomEvent(playTransaction);
+
+      await expect(playTransaction)
         .to.emit(gameApi, "RequestRandom")
-        .withArgs(owner.address, "0x10487077d5d27dd25c219249df78f019cec43368924997d1ffb632cc823220c5");
+        .withArgs(owner.address, requestId);
     });
 
 
@@ -280,7 +294,28 @@ describe("Game Contract", async function () {
 
     });
 
+    it("Only chainlink vrf coordinator can deliver random numbers.", async function () {
+      
+      await sendLinkToGameContract(100);
+
+      await gameApi.openSession({value: openSessionFee});
+
+      const requestId = await getReceiptFromRequestRandomEvent(await gameApi.play(1));
+
+      await expect(gameApi.rawFulfillRandomness(requestId, 12))
+        .to.revertedWith(revertMessages.onlyVRFChainlinkCanGiveRandom);
+
+    });
+
     it("Player loses the game and loses all it's tokens gain from the session", async function () {
+      
+      await sendLinkToGameContract(100);
+
+      await gameApi.openSession({value: openSessionFee});
+
+      const requestId = await getReceiptFromRequestRandomEvent(await gameApi.play(1));
+      
+      await vrfCoordinator.fufillRandomNumberMock(gameApi.address, requestId, 23);
 
     });
 

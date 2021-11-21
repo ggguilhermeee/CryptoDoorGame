@@ -250,6 +250,7 @@ contract GameLogic is GameCore, VRFConsumerBase {
     
     /// @dev Called by chainlink to return our random number.
     function fulfillRandomness(bytes32 requestId, uint256 randomness) internal override {
+        console.log(randomness);
         //addressToRequestId[] = 0
         //randomResult = randomness;
     }
