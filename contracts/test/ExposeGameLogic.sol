@@ -27,7 +27,9 @@ contract ExposedGameLogic is GameLogic {
     function getRewardsKey(
         uint256 _session, 
         uint256 _level
-        ) external pure returns (string memory) {
+        ) external view returns (string memory) {
+            console.log(string(abi.encodePacked(_session, _level)));
+            console.log(_level);
         return super._getRewardsKey(_session, _level);
     }
 
@@ -48,7 +50,7 @@ contract ExposedGameLogic is GameLogic {
         uint256 _round
         ) external pure returns (string memory) {
             
-        return super._getPlayerMovesKey(_player, _session, _level, _round);
+        return super._getPlayerMovesKey(_session, _level, _round);
     }
 
 }

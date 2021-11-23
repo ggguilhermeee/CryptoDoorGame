@@ -1,5 +1,4 @@
 import { BigNumberish } from "@ethersproject/bignumber";
-import { BytesLike } from "@ethersproject/bytes";
 import { ContractTransaction } from "@ethersproject/contracts";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
 import { expect } from "chai";
@@ -23,6 +22,8 @@ const revertMessages = {
   nonExistingDoor: "You choosed non-existing door.",
 
   onlyVRFChainlinkCanGiveRandom: "Only VRFCoordinator can fulfill",
+
+  cannotLeaveSessionWhileWaitingForRandom: "Cannot leave while waiting for randomness",
 
 };
 
@@ -166,7 +167,7 @@ describe("Game Contract", async function () {
 
     });
 
-    it("Player when owns an active session he can close it.", async function () {
+    it("An action can be closed by the player.", async function () {
 
       await gameApi.openSession({value: openSessionFee});
   
@@ -180,6 +181,19 @@ describe("Game Contract", async function () {
   
       expect(closed).is.false;
       
+    });
+
+    it("Player cannot leave a session while waiting for random number.", async function () {
+
+      await sendLinkToGameContract(100);
+
+      await gameApi.openSession({value: openSessionFee});
+
+      await gameApi.play(1)
+      
+      await expect(gameApi.closeSession())
+      .to.be.revertedWith(revertMessages.cannotLeaveSessionWhileWaitingForRandom);
+
     });
 
   });
@@ -219,6 +233,19 @@ describe("Game Contract", async function () {
         .withArgs(owner.address, requestId);
     });
 
+    it("When player makes a move and eveything works as expected a new event RequestRandom is emitted", async function () {
+
+      await sendLinkToGameContract(100);
+
+      await gameApi.openSession({value: openSessionFee});
+
+      const requestId = await getReceiptFromRequestRandomEvent(await gameApi.play(1));
+    
+      await expect(vrfCoordinator.fufillRandomNumberMock(gameApi.address, requestId, 2))
+        .to.emit(gameApi, "RandomFulfilled")
+        .withArgs(owner.address, requestId);
+
+    });
 
   });
 
@@ -246,7 +273,7 @@ describe("Game Contract", async function () {
       //const expectedKey = ethers.utils.keccak256(keyLookup);
     
 
-      //console.log(await exposedGameLogic.getRewardsKey(session, level));
+      console.log(await exposedGameLogic.getRewardsKey(session, level));
       
     });
 
@@ -308,14 +335,6 @@ describe("Game Contract", async function () {
     });
 
     it("Player loses the game and loses all it's tokens gain from the session", async function () {
-      
-      await sendLinkToGameContract(100);
-
-      await gameApi.openSession({value: openSessionFee});
-
-      const requestId = await getReceiptFromRequestRandomEvent(await gameApi.play(1));
-      
-      await vrfCoordinator.fufillRandomNumberMock(gameApi.address, requestId, 23);
 
     });
 
@@ -323,11 +342,11 @@ describe("Game Contract", async function () {
 
     });
 
-    it("Player wins all levels and all tokens should move to their address", async function () {
+    it("Player wins all levels and all tokens should move to his address", async function () {
 
     });
 
-    it("Player close the session and collect all of their tokens", async function () {
+    it("Player close the session before completing all levels and collect all of his tokens", async function () {
       
     });
 

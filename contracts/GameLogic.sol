@@ -18,11 +18,11 @@ contract GameLogic is GameCore, VRFConsumerBase {
     /*** STATE ***/
 
     /// @dev Random numper per requestId
-    mapping(bytes32 => uint256) internal requestIdToRandomNumber;
+    mapping(bytes32 => RandomRequestMetadata) internal requestIdToRandomNumber;
 
     /// @dev Address of the player to requestid
     /// This doesnt not store history
-    mapping(address => bytes32) internal addressToRequestId;
+    mapping(address => bytes32) internal playerPendingRequestId;
 
     /*** EVENTS ***/
 
@@ -31,6 +31,8 @@ contract GameLogic is GameCore, VRFConsumerBase {
     event PlayerClosesSession(address indexed _player, uint256 indexed sessionId);
 
     event RequestRandom(address indexed _player, bytes32 indexed _requestId);
+
+    event RandomFulfilled(address indexed _player, bytes32 indexed _requestId);
 
     /*** FUNCTIONS ***/
 
@@ -123,7 +125,7 @@ contract GameLogic is GameCore, VRFConsumerBase {
 
         require(isPlayerPlaying(player), "No session active to play.");
         
-        require(addressToRequestId[player] == 0, "Already requested a random number.");
+        require(playerPendingRequestId[player] == 0, "Already requested a random number.");
         
         PlayerMeta storage playerMetadata = metadataByPlayer[player];
         GameSession storage playerSession = playerSessions[playerMetadata.playerSessionId];
@@ -137,7 +139,6 @@ contract GameLogic is GameCore, VRFConsumerBase {
         require(_choosedDoor > 0 && _choosedDoor <= doorsAmount, "You choosed non-existing door.");
 
         string memory movesKey = _getPlayerMovesKey(
-            player,
             playerMetadata.playerSessionId,
             playerSession.currentLevel,
             playerSession.currentRound
@@ -152,87 +153,24 @@ contract GameLogic is GameCore, VRFConsumerBase {
 
         bytes32 requestId = requestRandomness(keyHash, fee);
 
-        addressToRequestId[player] = requestId;
+        playerPendingRequestId[player] = requestId;
+
+        // Information to chainlink when it retrieves our random number.
+        RandomRequestMetadata storage requestIdToRandomNumberPtr = requestIdToRandomNumber[requestId];
+        requestIdToRandomNumberPtr.maxNumberOfDoors = doorsAmount;
+        requestIdToRandomNumberPtr.player = player;
+        requestIdToRandomNumberPtr.playerMove = _choosedDoor;
         
         emit RequestRandom(player, requestId);
-    }
-
-    /// @dev Player makes a move in a session.
-    /// @param _choosedDoor The choosed door by the player.
-    /// Returns true if the player choosed the right door false if player choosed the wrong door.
-    function _play2(uint256 _choosedDoor) internal returns (bool) {
-        address player = msg.sender;
-
-        require(isPlayerPlaying(player), "No session active to play.");
-
-        PlayerMeta storage playerMetadata = metadataByPlayer[player];
-        GameSession storage playerSession = playerSessions[playerMetadata.playerSessionId];
-
-        // The final level will always have two doors to choose.
-        // This means that the number of doors is (maxLevel - currLevel) + 2
-        // The door choosen by the player must be between the door number on and the 
-        // result of the formula above.
-        uint256 doorsAmount = _getNumberOfDoorByLevel(playerSession.currentLevel);
-        require(_choosedDoor > 0 && _choosedDoor <= doorsAmount, "You choosed non-existing door.");
-
-        string memory movesKey = _getPlayerMovesKey(
-            player,
-            playerMetadata.playerSessionId,
-            playerSession.currentLevel,
-            playerSession.currentRound
-        );
-
-        // This will not happen because of the first check. When player loses isPlayerPlaying returns false.
-        // Only for protection.
-        // The way the logic is handled when we loose or cancel a game session we
-        // no longer can modify the state of the last session and the first required
-        // for this method will fail.
-        require(playerMovesBySessionsLevelAndRound[movesKey] != 0, "You already made a move.");
-
-        playerMovesBySessionsLevelAndRound[movesKey] = _choosedDoor;
-
-        // Gets the key of the mapper that stores the all the results of all created doors
-        string memory doorResultKey = _getDoorResultKey(
-            playerMetadata.playerSessionId,
-            playerSession.currentLevel,
-            playerSession.currentRound,
-            _choosedDoor
-        );
-
-        // Gets random number result for the door
-
-        bool won = doorResultBySessionLevelRoundAndDoor[doorResultKey];
-
-        if(won) {
-            // Player won the round.
-            if (playerSession.currentRound == roundsNumberPerLevel) {
-                // The player won this session
-                if(playerSession.currentLevel == finalLevel) {
-                    playerSession.won = true;   
-                    //TODO COLLECT REWARDS.
-                }
-                // The player won this level. Reset rounds and increment level.
-                else {
-                    playerSession.currentRound = 1;
-                    playerSession.currentLevel++;
-                }
-            }
-        }
-        // Player lost the game.
-        else {
-            // This is not needed. The won is initialized as 0 => false.
-            playerSession.won = false;
-            
-            playerMetadata.playerSessionId = 0;
-        }
-
-        return won;
     }
 
     /// @dev Method to let players leave their sessions and reclaim 
     /// all of the rewards.
     function _leaveSession() internal {
         require(isPlayerPlaying(msg.sender), "Cannot leave empty session.");
+
+        // Cannot leave the game while randomness not returned
+        require(playerPendingRequestId[msg.sender] == 0, "Cannot leave while waiting for randomness");
 
         PlayerMeta storage playerMetadata = metadataByPlayer[msg.sender];
 
@@ -250,9 +188,52 @@ contract GameLogic is GameCore, VRFConsumerBase {
     
     /// @dev Called by chainlink to return our random number.
     function fulfillRandomness(bytes32 requestId, uint256 randomness) internal override {
-        console.log(randomness);
-        //addressToRequestId[] = 0
-        //randomResult = randomness;
+        
+        RandomRequestMetadata storage randomRequestMetadata = requestIdToRandomNumber[requestId];
+
+        // This random number is the door that will be a failure.
+        uint256 randomDoorValue = 
+            (uint256(keccak256(abi.encode(randomness, 1))) % randomRequestMetadata.maxNumberOfDoors) + 1;
+
+        address player = randomRequestMetadata.player;
+
+        PlayerMeta storage playerMetadata = metadataByPlayer[player];
+        GameSession storage playerSession = playerSessions[playerMetadata.playerSessionId];
+
+        // The player random request was already fulfilled.
+        playerPendingRequestId[player] = 0;        
+
+        // Process the move
+        if(randomRequestMetadata.playerMove != randomDoorValue) {
+
+            // Player won the round.
+            if (playerSession.currentRound == roundsNumberPerLevel) {
+                
+                // The player won this session
+                if(playerSession.currentLevel == finalLevel) {
+                    
+                    playerMetadata.wins++;
+                    playerMetadata.playerSessionId = 0;
+                    
+                    uint256 randomReward = uint256(keccak256(abi.encode(randomness, 2)));
+
+                    //TODO COLLECT REWARDS.
+                }
+
+                // The player won this level. Reset rounds and increment level.
+                else {
+                    playerSession.currentRound = 1;
+                    playerSession.currentLevel++;
+                }
+            }
+        }
+        // Player lost the game.
+        else {
+            playerMetadata.losses++;
+            playerMetadata.playerSessionId = 0;
+        }
+
+        emit RandomFulfilled(player, requestId);
     }
 
     /// @dev The last level will have only two doors to choose to be 50% winning the round.
@@ -293,17 +274,15 @@ contract GameLogic is GameCore, VRFConsumerBase {
     }
     
     /// @dev Get the composite key to get the moves a player makes
-    /// @param _player The address of the player.
     /// @param _session The session to search for.
     /// @param _level The level to search for.
     /// @param _round The round to search for.
     function _getPlayerMovesKey(
-        address _player,
         uint256 _session, 
         uint256 _level,
         uint256 _round
         ) internal pure returns (string memory) {
                 
-        return string(abi.encodePacked(_player, _session, _level, _round));
+        return string(abi.encodePacked(_session, _level, _round));
     }
 }

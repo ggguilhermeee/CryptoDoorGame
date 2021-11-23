@@ -6,6 +6,16 @@ pragma solidity ^0.8.0;
 contract GameCore {
 
     /*** DATA TYPES ***/
+
+    /// @dev This structure is metadata to be used when chainlink fulfill the random number.
+    struct RandomRequestMetadata {
+        
+        address player;
+
+        uint256 playerMove;
+
+        uint256 maxNumberOfDoors;
+    }
     
     /// @dev This represents the game session the player is playing
     struct GameSession {
@@ -15,9 +25,6 @@ contract GameCore {
 
         // The current round the user is playing in this session.
         uint256 currentRound;
-
-        // Player won this session.
-        bool won;
 
         // The player has left the session and claim all rewards with him
         bool leftSession;
@@ -71,6 +78,7 @@ contract GameCore {
     /// The value is the id of the nft reward.
     mapping(string => uint256) internal rewardsBySessionAndLevel;
 
+    /// TODO no need for this doorResultBySessionLevelRoundAndDoor ----
     /// @dev this mapper holds all results (fail or win) of doors by session, level, round and door number.
     /// The key is a string composed by enconding the session id, level, round and door number.
     /// The value is true if the door is safe or false if the door is an obstacle.
