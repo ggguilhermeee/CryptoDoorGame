@@ -84,21 +84,5 @@ contract GameCore is ERC1155 {
     /// @dev Game session by game session id
     mapping(uint256 => GameSession) internal playerSessions;
 
-    /// @dev This mapper holds all rewards by session and level;
-    /// The key is a string composed by enconding session id and level
-    /// The value is the id of the nft reward.
-    mapping(string => uint256) internal rewardsBySessionAndLevel;
-
-    /// TODO no need for this doorResultBySessionLevelRoundAndDoor ----
-    /// @dev this mapper holds all results (fail or win) of doors by session, level, round and door number.
-    /// The key is a string composed by enconding the session id, level, round and door number.
-    /// The value is true if the door is safe or false if the door is an obstacle.
-    mapping(string => bool) internal doorResultBySessionLevelRoundAndDoor;
-
-    /// @dev this mapper holds all moves made by players.
-    /// The key is a string composed by player address, session id, level and round.
-    /// The value should give the move choosed by the player.
-    mapping(string => uint256) internal playerMovesBySessionsLevelAndRound;
-
     constructor(string memory _uri) ERC1155(_uri){}
 }

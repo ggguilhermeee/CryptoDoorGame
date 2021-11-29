@@ -66,7 +66,7 @@ contract GameLogic is GameCore, VRFConsumerBase {
 
     /// @dev Checks how many losses a player has.
     /// @param _player The player we want to query.
-    function getPlayerLossersCount(address _player) public view returns(uint256) {
+    function getPlayerLossesCount(address _player) public view returns(uint256) {
         return metadataByPlayer[_player].losses;
     }
 
@@ -74,6 +74,15 @@ contract GameLogic is GameCore, VRFConsumerBase {
     /// @param _player The player we want to query.
     function getPlayerCancelationSessionsCount(address _player) public view returns(uint256) {
         return metadataByPlayer[_player].cancelations;
+    }
+
+    /// @dev Checks how many session a player created.
+    /// @param _player The player we want to query.
+    function getPlayerSessionsCount(address _player) public view returns (uint256) {
+        return 
+            getPlayerWinsCount(_player) + 
+            getPlayerLossesCount(_player) + 
+            getPlayerCancelationSessionsCount(_player);
     }
 
     /// @dev This function will start a new game session.
