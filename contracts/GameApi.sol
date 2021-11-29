@@ -11,7 +11,8 @@ contract GameApi is GameLogic {
         address _vrfCoordinator, 
         address _linkToken,
         uint256 _vrfFee,
-        bytes32 _keyHash) GameLogic(_feeToOpenSession, _vrfCoordinator, _linkToken, _vrfFee, _keyHash) {}
+        bytes32 _keyHash,
+        string memory _uri) GameLogic(_feeToOpenSession, _vrfCoordinator, _linkToken, _vrfFee, _keyHash, _uri) {}
 
     /// @dev Starts a new session for caller player.
     /// The players needs to pay a fee to open a new session

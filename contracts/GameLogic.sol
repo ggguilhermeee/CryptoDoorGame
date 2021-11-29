@@ -41,7 +41,8 @@ contract GameLogic is GameCore, VRFConsumerBase {
         address _vrfCoordinator, 
         address _linkToken, 
         uint256 _vrfFee, 
-        bytes32 _keyHash) VRFConsumerBase(_vrfCoordinator,_linkToken)
+        bytes32 _keyHash,
+        string memory _uri) VRFConsumerBase(_vrfCoordinator,_linkToken) GameCore(_uri)
     {
         keyHash = _keyHash;
         fee = _vrfFee;
@@ -49,14 +50,6 @@ contract GameLogic is GameCore, VRFConsumerBase {
         feeToOpenSession = _feeToOpenSession; // Fee to start session
 
         finalLevel = 7; // ChangeToBeParameterLater
-    }
-
-    /// @dev Gets the current session of the _player.
-    /// @param _player The current session of the player.
-    function getCurrentSession(address _player) public view returns(GameSession memory) {
-        uint256 sessionId = metadataByPlayer[_player].playerSessionId;
-
-        return playerSessions[sessionId];
     }
 
     /// @dev Checks if the player already has and active session.
@@ -149,7 +142,9 @@ contract GameLogic is GameCore, VRFConsumerBase {
         // The way the logic is handled when we loose or cancel a game session we
         // no longer can modify the state of the last session and the first required
         // for this method will fail.
-        require(playerMovesBySessionsLevelAndRound[movesKey] == 0, "You already made a move.");
+        require(playerSession.playerMoves[movesKey] == 0, "You already made a move.");
+
+        playerSession.playerMoves[movesKey] = _choosedDoor;
 
         bytes32 requestId = requestRandomness(keyHash, fee);
 
@@ -175,15 +170,19 @@ contract GameLogic is GameCore, VRFConsumerBase {
         PlayerMeta storage playerMetadata = metadataByPlayer[msg.sender];
 
         uint256 cancelledSession = playerMetadata.playerSessionId;
-
+        
         playerSessions[cancelledSession].leftSession = true;
 
         playerMetadata.playerSessionId = 0;
         playerMetadata.cancelations++;
 
-        //TODO COLLECT REWARDS.
+        _collectRewards();
 
         emit PlayerClosesSession(msg.sender, cancelledSession);
+    }
+
+    function _collectRewards() internal {
+
     }
     
     /// @dev Called by chainlink to return our random number.
@@ -201,7 +200,16 @@ contract GameLogic is GameCore, VRFConsumerBase {
         GameSession storage playerSession = playerSessions[playerMetadata.playerSessionId];
 
         // The player random request was already fulfilled.
-        playerPendingRequestId[player] = 0;        
+        playerPendingRequestId[player] = 0;
+
+        // Stores the value of the losing door
+        string memory wrongDoorKey = _getDoorResultKey(
+            playerMetadata.playerSessionId, 
+            playerSession.currentLevel, 
+            playerSession.currentRound, 
+            randomDoorValue);
+
+        playerSession.wrongDoor[wrongDoorKey] = randomDoorValue;
 
         // Process the move
         if(randomRequestMetadata.playerMove != randomDoorValue) {
@@ -209,15 +217,16 @@ contract GameLogic is GameCore, VRFConsumerBase {
             // Player won the round.
             if (playerSession.currentRound == roundsNumberPerLevel) {
                 
+                uint256 randomReward = uint256(keccak256(abi.encode(randomness, 2)));
+                string memory rewardKey = _getRewardsKey(playerMetadata.playerSessionId, playerSession.currentLevel);
+
+                playerSession.rewards[rewardKey] = randomReward;
+                
                 // The player won this session
                 if(playerSession.currentLevel == finalLevel) {
                     
                     playerMetadata.wins++;
                     playerMetadata.playerSessionId = 0;
-                    
-                    uint256 randomReward = uint256(keccak256(abi.encode(randomness, 2)));
-
-                    //TODO COLLECT REWARDS.
                 }
 
                 // The player won this level. Reset rounds and increment level.
@@ -225,6 +234,9 @@ contract GameLogic is GameCore, VRFConsumerBase {
                     playerSession.currentRound = 1;
                     playerSession.currentLevel++;
                 }
+            }
+            else {
+                playerSession.currentRound++;
             }
         }
         // Player lost the game.

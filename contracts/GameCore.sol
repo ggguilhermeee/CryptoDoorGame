@@ -2,8 +2,10 @@
 
 pragma solidity ^0.8.0;
 
+import "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
+
 /// @dev Contains the core data of the game.
-contract GameCore {
+contract GameCore is ERC1155 {
 
     /*** DATA TYPES ***/
 
@@ -31,6 +33,15 @@ contract GameCore {
 
         // The block date containing this new session.
         uint createDate;
+
+        // Moves per level and round.
+        mapping (string => uint256) playerMoves;
+
+        // Rewards per level.
+        mapping (string => uint256) rewards;
+
+        // Failing door.
+        mapping (string => uint256) wrongDoor;
     }
 
     /// @dev This has metadata for a player
@@ -88,4 +99,6 @@ contract GameCore {
     /// The key is a string composed by player address, session id, level and round.
     /// The value should give the move choosed by the player.
     mapping(string => uint256) internal playerMovesBySessionsLevelAndRound;
+
+    constructor(string memory _uri) ERC1155(_uri){}
 }

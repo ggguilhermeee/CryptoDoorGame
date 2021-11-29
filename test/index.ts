@@ -68,8 +68,8 @@ describe("Game Contract", async function () {
     vrfCoordinator = await VRFCoordinator.deploy(linkToken.address, owner.address)
     // ----
 
-    gameApi = await GameApi.deploy(openSessionFee, vrfCoordinator.address, linkToken.address, 1, ethers.utils.formatBytes32String("test"));
-    exposedGameLogic = await ExposedGameLogic.deploy(openSessionFee, vrfCoordinator.address, linkToken.address, 1, ethers.utils.formatBytes32String("test"));
+    gameApi = await GameApi.deploy(openSessionFee, vrfCoordinator.address, linkToken.address, 1, ethers.utils.formatBytes32String("test"), "");
+    exposedGameLogic = await ExposedGameLogic.deploy(openSessionFee, vrfCoordinator.address, linkToken.address, 1, ethers.utils.formatBytes32String("test"), "");
 
   });
 
