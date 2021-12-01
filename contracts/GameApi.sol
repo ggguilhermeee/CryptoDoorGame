@@ -36,5 +36,4 @@ contract GameApi is GameLogic {
     function getCreatedSessionsCounter() public view returns (uint256) {
         return playerSessionCount;
     }
-
 }

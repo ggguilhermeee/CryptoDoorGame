@@ -55,7 +55,15 @@ contract GameLogic is GameCore, VRFConsumerBase {
     /// @dev Checks if the player already has and active session.
     /// @param _player The player we want to query.
     function isPlayerPlaying(address _player) public view returns(bool) {
-        return metadataByPlayer[_player].playerSessionId != 0;
+        return metadataByPlayer[_player].activeSessionId != 0;
+    }
+
+    function hasRewardsToBeCollected(address _player) public view returns(bool) {
+        uint256 activeSessionId = metadataByPlayer[_player].activeSessionId;
+        
+        return activeSessionId != 0                     && 
+            (playerSessions[activeSessionId].leftSession ||
+            playerSessions[activeSessionId].won);
     }
 
     /// @dev Checks how many wins a player has.
@@ -97,6 +105,9 @@ contract GameLogic is GameCore, VRFConsumerBase {
 
         // A session can only be started when a player does not has an active session
         require(!isPlayerPlaying(player), "Active session already exists.");
+
+        // User cannot start a new session without collect rewards of their last session.
+        require(!hasRewardsToBeCollected(player), "Collect your rewards first.");
         
         // Increments the number of playerSessions and this is used as the session identifier
         uint256 newPlayerSessionId = ++playerSessionCount;
@@ -105,7 +116,7 @@ contract GameLogic is GameCore, VRFConsumerBase {
         GameSession storage playerSession = playerSessions[newPlayerSessionId];
 
         // Store new sessiongId
-        playerMetadata.playerSessionId = newPlayerSessionId;
+        playerMetadata.activeSessionId = newPlayerSessionId;
 
         // Init player session data
         playerSession.currentLevel = 1;
@@ -126,11 +137,14 @@ contract GameLogic is GameCore, VRFConsumerBase {
         address player = msg.sender;
 
         require(isPlayerPlaying(player), "No session active to play.");
+
+        // User cannot start a new session without collect rewards of their last session.
+        require(!hasRewardsToBeCollected(player), "Collect your rewards first.");
         
         require(playerPendingRequestId[player] == 0, "Already requested a random number.");
         
         PlayerMeta storage playerMetadata = metadataByPlayer[player];
-        GameSession storage playerSession = playerSessions[playerMetadata.playerSessionId];
+        GameSession storage playerSession = playerSessions[playerMetadata.activeSessionId];
 
         // The final level will always have two doors to choose.
         // This means that the number of doors is (maxLevel - currLevel) + 2
@@ -141,7 +155,7 @@ contract GameLogic is GameCore, VRFConsumerBase {
         require(_choosedDoor > 0 && _choosedDoor <= doorsAmount, "You choosed non-existing door.");
 
         string memory movesKey = _getPlayerMovesKey(
-            playerMetadata.playerSessionId,
+            playerMetadata.activeSessionId,
             playerSession.currentLevel,
             playerSession.currentRound
         );
@@ -151,9 +165,9 @@ contract GameLogic is GameCore, VRFConsumerBase {
         // The way the logic is handled when we loose or cancel a game session we
         // no longer can modify the state of the last session and the first required
         // for this method will fail.
-        require(playerSession.playerMoves[movesKey] == 0, "You already made a move.");
+        require(playerMoves[movesKey] == 0, "You already made a move.");
 
-        playerSession.playerMoves[movesKey] = _choosedDoor;
+        playerMoves[movesKey] = _choosedDoor;
 
         bytes32 requestId = requestRandomness(keyHash, fee);
 
@@ -178,14 +192,14 @@ contract GameLogic is GameCore, VRFConsumerBase {
 
         PlayerMeta storage playerMetadata = metadataByPlayer[msg.sender];
 
-        uint256 cancelledSession = playerMetadata.playerSessionId;
+        uint256 cancelledSession = playerMetadata.activeSessionId;
         
         playerSessions[cancelledSession].leftSession = true;
 
-        playerMetadata.playerSessionId = 0;
-        playerMetadata.cancelations++;
-
         _collectRewards();
+
+        playerMetadata.activeSessionId = 0;
+        playerMetadata.cancelations++;
 
         emit PlayerClosesSession(msg.sender, cancelledSession);
     }
@@ -206,19 +220,19 @@ contract GameLogic is GameCore, VRFConsumerBase {
         address player = randomRequestMetadata.player;
 
         PlayerMeta storage playerMetadata = metadataByPlayer[player];
-        GameSession storage playerSession = playerSessions[playerMetadata.playerSessionId];
+        GameSession storage playerSession = playerSessions[playerMetadata.activeSessionId];
 
         // The player random request was already fulfilled.
         playerPendingRequestId[player] = 0;
 
         // Stores the value of the losing door
         string memory wrongDoorKey = _getDoorResultKey(
-            playerMetadata.playerSessionId, 
+            playerMetadata.activeSessionId, 
             playerSession.currentLevel, 
             playerSession.currentRound, 
             randomDoorValue);
 
-        playerSession.wrongDoor[wrongDoorKey] = randomDoorValue;
+        wrongDoor[wrongDoorKey] = randomDoorValue;
 
         // Process the move
         if(randomRequestMetadata.playerMove != randomDoorValue) {
@@ -227,15 +241,14 @@ contract GameLogic is GameCore, VRFConsumerBase {
             if (playerSession.currentRound == roundsNumberPerLevel) {
                 
                 uint256 randomReward = uint256(keccak256(abi.encode(randomness, 2)));
-                string memory rewardKey = _getRewardsKey(playerMetadata.playerSessionId, playerSession.currentLevel);
+                string memory rewardKey = _getRewardsKey(playerMetadata.activeSessionId, playerSession.currentLevel);
 
-                playerSession.rewards[rewardKey] = randomReward;
+                rewards[rewardKey] = randomReward;
                 
                 // The player won this session
                 if(playerSession.currentLevel == finalLevel) {
-                    
+                    playerSession.won = true;
                     playerMetadata.wins++;
-                    playerMetadata.playerSessionId = 0;
                 }
 
                 // The player won this level. Reset rounds and increment level.
@@ -251,7 +264,6 @@ contract GameLogic is GameCore, VRFConsumerBase {
         // Player lost the game.
         else {
             playerMetadata.losses++;
-            playerMetadata.playerSessionId = 0;
         }
 
         emit RandomFulfilled(player, requestId);

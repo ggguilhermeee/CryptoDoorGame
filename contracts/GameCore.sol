@@ -31,17 +31,10 @@ contract GameCore is ERC1155 {
         // The player has left the session and claim all rewards with him
         bool leftSession;
 
+        bool won;
+
         // The block date containing this new session.
         uint createDate;
-
-        // Moves per level and round.
-        mapping (string => uint256) playerMoves;
-
-        // Rewards per level.
-        mapping (string => uint256) rewards;
-
-        // Failing door.
-        mapping (string => uint256) wrongDoor;
     }
 
     /// @dev This has metadata for a player
@@ -58,7 +51,7 @@ contract GameCore is ERC1155 {
 
         // The id number of the current session the user is playing
         // If user does not have any session activated this number will be 0 and a new session should be created
-        uint256 playerSessionId;
+        uint256 activeSessionId;
     }
 
     /*** CONSTANTS ***/
@@ -83,6 +76,16 @@ contract GameCore is ERC1155 {
 
     /// @dev Game session by game session id
     mapping(uint256 => GameSession) internal playerSessions;
+
+    // Moves per level and round.
+    mapping (string => uint256) internal playerMoves;
+
+    // Rewards per level.
+    mapping (string => uint256) internal rewards;
+
+    // Failing door.
+    mapping (string => uint256) internal wrongDoor;
+
 
     constructor(string memory _uri) ERC1155(_uri){}
 }
