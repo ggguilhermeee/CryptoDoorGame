@@ -196,7 +196,7 @@ contract GameLogic is GameCore, VRFConsumerBase {
         
         playerSessions[cancelledSession].leftSession = true;
 
-        _collectRewards();
+        _collectRewards(msg.sender);
 
         playerMetadata.activeSessionId = 0;
         playerMetadata.cancelations++;
@@ -204,7 +204,15 @@ contract GameLogic is GameCore, VRFConsumerBase {
         emit PlayerClosesSession(msg.sender, cancelledSession);
     }
 
-    function _collectRewards() internal {
+    function _collectRewards(address _player) internal {
+        PlayerMeta memory playerMetadata = metadataByPlayer[_player];
+        GameSession memory playerSession = playerSessions[playerMetadata.activeSessionId];
+
+        for(uint256 i = 1 ; i <= playerSession.currentLevel; i++) {
+            string memory rewardKey = _getRewardsKey(playerMetadata.activeSessionId, i);
+            uint rewardId = rewards[rewardKey];
+            _mint(_player, rewardId, 1, "");
+        }
 
     }
     
