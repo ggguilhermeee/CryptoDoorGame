@@ -50,6 +50,8 @@ contract GameLogic is GameCore, VRFConsumerBase {
         feeToOpenSession = _feeToOpenSession; // Fee to start session
 
         finalLevel = 7; // ChangeToBeParameterLater
+
+        roundsNumberPerLevel = 3;
     }
 
     /// @dev Checks if the player already has and active session.
@@ -61,7 +63,7 @@ contract GameLogic is GameCore, VRFConsumerBase {
     function hasRewardsToBeCollected(address _player) public view returns(bool) {
         uint256 activeSessionId = metadataByPlayer[_player].activeSessionId;
         
-        return activeSessionId != 0                     && 
+        return activeSessionId != 0 && 
             (playerSessions[activeSessionId].leftSession ||
             playerSessions[activeSessionId].won);
     }
@@ -244,10 +246,9 @@ contract GameLogic is GameCore, VRFConsumerBase {
 
         // Process the move
         if(randomRequestMetadata.playerMove != randomDoorValue) {
-
+            
             // Player won the round.
             if (playerSession.currentRound == roundsNumberPerLevel) {
-                
                 uint256 randomReward = uint256(keccak256(abi.encode(randomness, 2)));
                 string memory rewardKey = _getRewardsKey(playerMetadata.activeSessionId, playerSession.currentLevel);
 

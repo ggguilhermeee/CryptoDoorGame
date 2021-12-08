@@ -36,4 +36,9 @@ contract GameApi is GameLogic {
     function getCreatedSessionsCounter() public view returns (uint256) {
         return playerSessionCount;
     }
+
+    function getCurrentSession(address _player) public view returns (GameSession memory){
+        PlayerMeta memory meta = metadataByPlayer[_player];
+        return playerSessions[meta.activeSessionId];
+    }
 }

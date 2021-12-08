@@ -1,4 +1,5 @@
 import { BigNumberish } from "@ethersproject/bignumber";
+import { BytesLike } from "@ethersproject/bytes";
 import { ContractTransaction } from "@ethersproject/contracts";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
 import { expect } from "chai";
@@ -86,6 +87,10 @@ describe("Game Contract", async function () {
     return emittedEvent?.args!["_requestId"]
   }
 
+  async function OffChainNodeFufillRandomNumber(targetAddress:string, requestId:BytesLike, randomNumber:BigNumberish){
+    return vrfCoordinator.fufillRandomNumberMock(targetAddress, requestId, randomNumber)
+  }
+
   describe("Testing opening and close sessions", function () {
 
     it("Function openSession should pass when the right fee is paid.", async function () {
@@ -156,14 +161,14 @@ describe("Game Contract", async function () {
   
     });
 
-    it.skip("When player starts new session the session level and round should be set to 1", async function () {
+    it("When player starts new session the session level and round should be set to 1", async function () {
 
       await gameApi.openSession({value: openSessionFee});
 
-      //const currentSession = await gameApi.getCurrentSession(owner.address);
+      const currentSession = await gameApi.getCurrentSession(owner.address);
 
-      //expect(currentSession.currentLevel).to.be.eq(1);
-      //xpect(currentSession.currentRound).to.be.eq(1);
+      expect(currentSession.currentLevel).to.be.eq(1);
+      expect(currentSession.currentRound).to.be.eq(1);
 
     });
 
@@ -178,7 +183,7 @@ describe("Game Contract", async function () {
 
     });
 
-    it("An action can be closed by the player.", async function () {
+    it("A session can be closed by the player.", async function () {
 
       await gameApi.openSession({value: openSessionFee});
   
@@ -252,7 +257,7 @@ describe("Game Contract", async function () {
 
       const requestId = await getReceiptFromRequestRandomEvent(await gameApi.play(1));
     
-      await expect(vrfCoordinator.fufillRandomNumberMock(gameApi.address, requestId, 2))
+      await expect(OffChainNodeFufillRandomNumber(gameApi.address, requestId, 2))
         .to.emit(gameApi, "RandomFulfilled")
         .withArgs(owner.address, requestId);
 
@@ -345,12 +350,81 @@ describe("Game Contract", async function () {
 
     });
 
-    it("Player loses the game and loses all it's tokens gain from the session", async function () {
+    it("Player wins a round and the round is incremented", async function (){
+      
+      await sendLinkToGameContract(100);
 
+      await gameApi.openSession({value: openSessionFee});
+
+      const gameSession1 = await gameApi.getCurrentSession(owner.address);
+
+      expect(gameSession1.currentLevel).to.be.equal(1);
+      expect(gameSession1.currentRound).to.be.equal(1);
+
+      const requestId = await getReceiptFromRequestRandomEvent(await gameApi.play(1));
+
+      // Random offchain node fufils random number
+      await OffChainNodeFufillRandomNumber(gameApi.address, requestId, 2);
+
+      const gameSession2 = await gameApi.getCurrentSession(owner.address);
+
+      expect(gameSession2.currentLevel).to.be.equal(1);
+      expect(gameSession2.currentRound).to.be.equal(2);
     });
 
-    it("Player wins all rounds and passes to the next level", async function () {
+    it.only("Player wins all rounds and passes to the next level", async function () {
+      await sendLinkToGameContract(100);
 
+      await gameApi.openSession({value: openSessionFee});
+
+      const gameSession = await gameApi.getCurrentSession(owner.address);
+
+      expect(gameSession.currentLevel).to.be.equal(1);
+      expect(gameSession.currentRound).to.be.equal(1);
+
+      // Round 1
+
+      const requestId1 = await getReceiptFromRequestRandomEvent(await gameApi.play(1));
+      
+      // Random offchain node fufils random number
+      await OffChainNodeFufillRandomNumber(gameApi.address, requestId1, 2);
+
+      const gameSession1 = await gameApi.getCurrentSession(owner.address);
+
+      expect(gameSession1.currentLevel).to.be.equal(1);
+      expect(gameSession1.currentRound).to.be.equal(2);
+
+      // Round 2
+
+      const requestId2 = await getReceiptFromRequestRandomEvent(await gameApi.play(2));
+      
+      // Random offchain node fufils random number
+      await OffChainNodeFufillRandomNumber(gameApi.address, requestId2, 1);
+
+      const gameSession2 = await gameApi.getCurrentSession(owner.address);
+
+      expect(gameSession2.currentLevel).to.be.equal(1);
+      expect(gameSession2.currentRound).to.be.equal(3);
+
+      // Round 3
+
+      const requestId3 = await getReceiptFromRequestRandomEvent(await gameApi.play(3));
+      
+      // Random offchain node fufils random number
+      await OffChainNodeFufillRandomNumber(gameApi.address, requestId3, 2);
+
+      const gameSession3 = await gameApi.getCurrentSession(owner.address);
+
+      expect(gameSession3.currentLevel).to.be.equal(2);
+      expect(gameSession3.currentRound).to.be.equal(1);
+    });
+
+    it("Player only wins rewards after all rounds in a level are completed.", async function (){
+      
+    });
+
+    it("Player loses the game and loses all it's tokens gain from the session", async function () {
+    
     });
 
     it("Player wins all levels and all tokens should move to his address", async function () {
